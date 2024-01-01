@@ -1,188 +1,60 @@
+-- SQL DATA CLEANING for Nashville Housing Prices Database
 
-/* SQL DATA CLEANING using Nashville housing prices database */
+-- Converting sale date format
+ALTER TABLE datum
+ADD SaleDateConv DATE;
 
-Select * from datum
+UPDATE datum
+SET SaleDateConv = CONVERT(DATE, SaleDate);
 
---Converting sale date format
+-- Removing null from property address
+UPDATE a
+SET PropertyAddress = ISNULL(a.PropertyAddress, b.PropertyAddress)
+FROM datum a
+JOIN datum b ON a.ParcelID = b.ParcelID AND a.[UniqueID] <> b.[UniqueID]
+WHERE a.PropertyAddress IS NULL;
 
-select SaleDate, CONVERT(Date,SaleDate) from datum;
+-- Breaking property address into address, city, state
+ALTER TABLE datum
+ADD PropAddress NVARCHAR(255),
+    PropCity NVARCHAR(255);
 
-alter table datum
-add SaleDateConv Date;
+UPDATE datum
+SET PropAddress = SUBSTRING(PropertyAddress, 1, CHARINDEX(',', PropertyAddress) - 1),
+    PropCity = SUBSTRING(PropertyAddress, CHARINDEX(',', PropertyAddress) + 1, LEN(PropertyAddress));
 
-Update datum
-set SaleDateConv=CONVERT(Date,SaleDate);
+-- Breaking down Owner address
+ALTER TABLE datum
+ADD OwnerAdd NVARCHAR(255),
+    OwnerCity NVARCHAR(255),
+    OwnerState NVARCHAR(255);
 
---Removing null from property address
+UPDATE datum
+SET OwnerAdd = PARSENAME(REPLACE(OwnerAddress, ',', '.'), 3),
+    OwnerCity = PARSENAME(REPLACE(OwnerAddress, ',', '.'), 2),
+    OwnerState = PARSENAME(REPLACE(OwnerAddress, ',', '.'), 1);
 
-select * from datum
-
-select * from datum
-where PropertyAddress is null
-order by ParcelID
-
-Select a.ParcelID, a.PropertyAddress, b.ParcelID, b.PropertyAddress
-From datum a
-JOIN datum b
-	on a.ParcelID = b.ParcelID
-	AND a.[UniqueID ] <> b.[UniqueID ]
-Where a.PropertyAddress is null
-
-Select a.ParcelID, a.PropertyAddress, b.ParcelID, b.PropertyAddress, ISNULL(a.PropertyAddress,b.PropertyAddress)
-From datum a
-JOIN datum b
-	on a.ParcelID = b.ParcelID
-	AND a.[UniqueID ] <> b.[UniqueID ]
-Where a.PropertyAddress is null
-
-Update a
-SET PropertyAddress = ISNULL(a.PropertyAddress,b.PropertyAddress)
-From datum a
-JOIN datum b
-	on a.ParcelID = b.ParcelID
-	AND a.[UniqueID ] <> b.[UniqueID ]
-Where a.PropertyAddress is null
-
-Select * from datum
-where PropertyAddress is null
-
---Breaking property address into address, city, state
-
-Select PropertyAddress from datum
-
-Select PropertyAddress,
-substring(PropertyAddress,1,CHARINDEX(',',PropertyAddress)-1) as PropAddress,
-substring(PropertyAddress,CHARINDEX(',',PropertyAddress)+1,LEN(PropertyAddress)) as PropCity
-from datum
-
-alter table datum
-add PropAddress nvarchar(255);
-
-Update datum
-set PropAddress=substring(PropertyAddress,1,CHARINDEX(',',PropertyAddress)-1)
-
-alter table datum
-add PropCity nvarchar(255);
-
-Update datum
-set PropCity=substring(PropertyAddress,CHARINDEX(',',PropertyAddress)+1,LEN(PropertyAddress))
-
-Select PropertyAddress,PropAddress,PropCity from datum
-
---Breaking down Owner address
-
-Select OwnerAddress from datum 
-
-Select
-PARSENAME(REPLACE(OwnerAddress, ',', '.') , 3),
-PARSENAME(REPLACE(OwnerAddress, ',', '.') , 2),
-PARSENAME(REPLACE(OwnerAddress, ',', '.') , 1)
-From datum
-
-alter table datum
-add OwnerAdd nvarchar(255);
-
-Update datum
-set OwnerAdd=PARSENAME(REPLACE(OwnerAddress, ',', '.') , 3)
-
-alter table datum
-add OwnerCity nvarchar(255);
-
-Update datum
-set OwnerCity=PARSENAME(REPLACE(OwnerAddress, ',', '.') , 2)
-
-alter table datum
-add OwnerState nvarchar(255);
-
-Update datum
-set OwnerState=PARSENAME(REPLACE(OwnerAddress, ',', '.') , 1)
-
-Select * from datum
-
-
---Convert 'SoldAsVacant' column to Yes/No 
-
-Select Distinct(SoldAsVacant), Count(SoldAsVacant)
-From datum
-Group by SoldAsVacant
-order by 2
-
-Select SoldAsVacant, 
-CASE	
-When SoldAsVacant = 'Y' THEN 'Yes'
-When SoldAsVacant = 'N' THEN 'No'
-ELSE SoldAsVacant
-END
-From datum
-
-Update datum
+-- Convert 'SoldAsVacant' column to Yes/No
+UPDATE datum
 SET SoldAsVacant = 
-CASE 
-When SoldAsVacant = 'Y' THEN 'Yes'
-When SoldAsVacant = 'N' THEN 'No'
-ELSE SoldAsVacant
-END
+    CASE 
+        WHEN SoldAsVacant = 'Y' THEN 'Yes'
+        WHEN SoldAsVacant = 'N' THEN 'No'
+        ELSE SoldAsVacant
+    END;
 
-Select distinct(SoldAsVacant),count(SoldAsVacant) from datum
-group by SoldAsVacant
+-- Removing duplicate records
+WITH RowNumCTE AS (
+    SELECT *,
+        ROW_NUMBER() OVER (
+            PARTITION BY ParcelID, PropertyAddress, SalePrice, SaleDate, LegalReference
+            ORDER BY UniqueID
+        ) AS row_num
+    FROM datum
+)
+DELETE FROM RowNumCTE
+WHERE row_num > 1;
 
---Removing duplicate records
-
-Select *,
-	ROW_NUMBER() OVER (
-	PARTITION BY ParcelID,
-				 PropertyAddress,
-				 SalePrice,
-				 SaleDate,
-				 LegalReference
-				 ORDER BY
-					UniqueID
-					) as row_num
-From datum
-order by row_num desc;
-
-WITH RowNumCTE AS(
-Select *,
-	ROW_NUMBER() OVER (
-	PARTITION BY ParcelID,
-				 PropertyAddress,
-				 SalePrice,
-				 SaleDate,
-				 LegalReference
-				 ORDER BY UniqueID) as row_num
-From datum)
-Select *
-From RowNumCTE
-Where row_num > 1
-
-WITH RowNumCTE AS(
-Select *,
-	ROW_NUMBER() OVER (
-	PARTITION BY ParcelID,
-				 PropertyAddress,
-				 SalePrice,
-				 SaleDate,
-				 LegalReference
-				 ORDER BY UniqueID) as row_num
-From datum)
-Delete 
-From RowNumCTE
-Where row_num > 1
-
-Select count(*)
-from datum
-
-
---Deleting unnecessary columns
-
-Select *
-from datum
-
-alter table datum
-drop column PropertyAddress,OwnerAddress,TaxDistrict
-
-alter table datum
-drop column SaleDate
-
-Select *
-from datum
+-- Deleting unnecessary columns
+ALTER TABLE datum
+DROP COLUMN PropertyAddress, OwnerAddress, TaxDistrict, SaleDate;
